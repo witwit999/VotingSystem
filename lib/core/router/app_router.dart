@@ -16,6 +16,7 @@ import '../../features/admin/voting_control/screens/voting_control_screen.dart';
 import '../../features/admin/documents/screens/admin_documents_screen.dart';
 import '../../features/admin/attendance/screens/attendance_screen.dart';
 import '../../features/admin/reports/screens/reports_screen.dart';
+import '../../features/admin/sessions/screens/session_details_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authStateProvider);
@@ -107,6 +108,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/admin/sessions',
         builder: (context, state) => const SessionsScreen(),
+      ),
+      GoRoute(
+        path: '/admin/sessions/:id',
+        builder: (context, state) {
+          final sessionId = state.pathParameters['id']!;
+          return SessionDetailsScreen(sessionId: sessionId);
+        },
       ),
       GoRoute(
         path: '/admin/members',

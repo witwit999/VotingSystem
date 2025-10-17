@@ -11,11 +11,26 @@ import '../../../../providers/voting_provider.dart';
 import '../../../../providers/attendance_provider.dart';
 import '../../../../core/localization/app_localizations.dart';
 
-class AdminDashboardScreen extends ConsumerWidget {
+class AdminDashboardScreen extends ConsumerStatefulWidget {
   const AdminDashboardScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AdminDashboardScreen> createState() =>
+      _AdminDashboardScreenState();
+}
+
+class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Trigger load after frame is built to avoid initialization issues
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(currentVotingProvider.notifier).loadCurrentVoting();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final memberState = ref.watch(memberProvider);
     final sessionState = ref.watch(sessionProvider);
     final votingState = ref.watch(currentVotingProvider);
@@ -547,10 +562,10 @@ class AdminDashboardScreen extends ConsumerWidget {
     dynamic voting, {
     required VoidCallback onTap,
   }) {
-    final yes = voting?.results.yes ?? 0;
-    final no = voting?.results.no ?? 0;
-    final abstain = voting?.results.abstain ?? 0;
-    final total = voting?.results.total ?? 0;
+    final accepted = voting?.tally?.accepted ?? 0;
+    final denied = voting?.tally?.denied ?? 0;
+    final abstained = voting?.tally?.abstained ?? 0;
+    final total = accepted + denied + abstained;
 
     return GestureDetector(
       onTap: onTap,
@@ -648,8 +663,8 @@ class AdminDashboardScreen extends ConsumerWidget {
                                   centerSpaceRadius: 0,
                                   sections: [
                                     PieChartSectionData(
-                                      value: yes.toDouble(),
-                                      title: '$yes',
+                                      value: accepted.toDouble(),
+                                      title: '$accepted',
                                       color: Colors.white,
                                       radius: 60,
                                       titleStyle: const TextStyle(
@@ -659,8 +674,8 @@ class AdminDashboardScreen extends ConsumerWidget {
                                       ),
                                     ),
                                     PieChartSectionData(
-                                      value: no.toDouble(),
-                                      title: '$no',
+                                      value: denied.toDouble(),
+                                      title: '$denied',
                                       color: Colors.white.withOpacity(0.5),
                                       radius: 55,
                                       titleStyle: const TextStyle(
@@ -670,8 +685,8 @@ class AdminDashboardScreen extends ConsumerWidget {
                                       ),
                                     ),
                                     PieChartSectionData(
-                                      value: abstain.toDouble(),
-                                      title: '$abstain',
+                                      value: abstained.toDouble(),
+                                      title: '$abstained',
                                       color: Colors.white.withOpacity(0.2),
                                       radius: 50,
                                       titleStyle: TextStyle(
@@ -710,15 +725,19 @@ class AdminDashboardScreen extends ConsumerWidget {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
-                          _buildLegendItem(l10n.yes, yes, Colors.white),
                           _buildLegendItem(
-                            l10n.no,
-                            no,
+                            l10n.accepted,
+                            accepted,
+                            Colors.white,
+                          ),
+                          _buildLegendItem(
+                            l10n.denied,
+                            denied,
                             Colors.white.withOpacity(0.5),
                           ),
                           _buildLegendItem(
                             l10n.abstain,
-                            abstain,
+                            abstained,
                             Colors.white.withOpacity(0.2),
                           ),
                         ],

@@ -7,13 +7,29 @@ import '../../../../core/widgets/admin_sidebar.dart';
 import '../../../../core/widgets/loading_indicator.dart';
 import '../../../../core/widgets/error_widget.dart';
 import '../../../../providers/voting_provider.dart';
+import '../../../../models/decision_model.dart';
 import '../../../../core/localization/app_localizations.dart';
 
-class VotingControlScreen extends ConsumerWidget {
+class VotingControlScreen extends ConsumerStatefulWidget {
   const VotingControlScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<VotingControlScreen> createState() =>
+      _VotingControlScreenState();
+}
+
+class _VotingControlScreenState extends ConsumerState<VotingControlScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Trigger load after frame is built to avoid initialization issues
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(currentVotingProvider.notifier).loadCurrentVoting();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final votingState = ref.watch(currentVotingProvider);
     final l10n = AppLocalizations.of(context);
 
@@ -31,7 +47,7 @@ class VotingControlScreen extends ConsumerWidget {
       ),
       drawer: const AdminSidebar(currentRoute: '/admin/voting-control'),
       body: votingState.when(
-        data: (voting) {
+        data: (decision) {
           return RefreshIndicator(
             onRefresh: () => ref.read(currentVotingProvider.notifier).refresh(),
             child: SingleChildScrollView(
@@ -80,7 +96,7 @@ class VotingControlScreen extends ConsumerWidget {
                               colors: [AppColors.error, Color(0xFFC62828)],
                             ),
                             onPressed:
-                                voting?.isActive == true
+                                decision?.isOpen == true
                                     ? () {
                                       ScaffoldMessenger.of(
                                         context,
@@ -91,7 +107,7 @@ class VotingControlScreen extends ConsumerWidget {
                                       );
                                     }
                                     : null,
-                            isEnabled: voting?.isActive == true,
+                            isEnabled: decision?.isOpen == true,
                           ),
                         ),
                       ),
@@ -100,11 +116,11 @@ class VotingControlScreen extends ConsumerWidget {
 
                   const SizedBox(height: 24),
 
-                  if (voting != null && voting.isActive) ...[
+                  if (decision != null && decision.isOpen) ...[
                     // Current Voting Session
                     FadeInUp(
                       delay: const Duration(milliseconds: 200),
-                      child: _buildCurrentVotingCard(context, voting, l10n),
+                      child: _buildCurrentVotingCard(context, decision, l10n),
                     ),
 
                     const SizedBox(height: 32),
@@ -124,7 +140,7 @@ class VotingControlScreen extends ConsumerWidget {
 
                     FadeInUp(
                       delay: const Duration(milliseconds: 400),
-                      child: _buildLiveResultsCard(context, voting, l10n),
+                      child: _buildLiveResultsCard(context, decision, l10n),
                     ),
                   ] else ...[
                     FadeInUp(
@@ -213,9 +229,16 @@ class VotingControlScreen extends ConsumerWidget {
 
   Widget _buildCurrentVotingCard(
     BuildContext context,
-    dynamic voting,
+    DecisionModel decision,
     AppLocalizations l10n,
   ) {
+    final total =
+        decision.tally != null
+            ? decision.tally!.accepted +
+                decision.tally!.denied +
+                decision.tally!.abstained
+            : 0;
+
     return Container(
       decoration: BoxDecoration(
         gradient: const LinearGradient(
@@ -310,22 +333,25 @@ class VotingControlScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 24),
                   Text(
-                    voting.title,
+                    decision.title,
                     style: const TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  Text(
-                    voting.question,
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.white.withOpacity(0.9),
-                      height: 1.5,
+                  if (decision.description != null &&
+                      decision.description!.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      decision.description!,
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.white.withOpacity(0.9),
+                        height: 1.5,
+                      ),
                     ),
-                  ),
+                  ],
                   const SizedBox(height: 24),
                   Container(
                     padding: const EdgeInsets.symmetric(
@@ -342,7 +368,7 @@ class VotingControlScreen extends ConsumerWidget {
                         const Icon(Icons.people, color: Colors.white, size: 20),
                         const SizedBox(width: 8),
                         Text(
-                          '${l10n.totalVotes}: ${voting.results.total}',
+                          '${l10n.totalVotes}: $total',
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 16,
@@ -363,9 +389,38 @@ class VotingControlScreen extends ConsumerWidget {
 
   Widget _buildLiveResultsCard(
     BuildContext context,
-    dynamic voting,
+    DecisionModel decision,
     AppLocalizations l10n,
   ) {
+    // If no tally, show placeholder
+    if (decision.tally == null) {
+      return Container(
+        padding: const EdgeInsets.all(32),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [AppColors.warning, Color(0xFFF57C00)],
+          ),
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: const Center(
+          child: Text(
+            'No votes yet',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+        ),
+      );
+    }
+
+    final tally = decision.tally!;
+    final total = tally.accepted + tally.denied + tally.abstained;
+    final maxY = total > 0 ? total.toDouble() * 1.2 : 10.0;
+
     return Container(
       decoration: BoxDecoration(
         gradient: const LinearGradient(
@@ -403,19 +458,19 @@ class VotingControlScreen extends ConsumerWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
                       _buildVoteCountCard(
-                        l10n.yes.toUpperCase(),
-                        voting.results.yes,
-                        voting.results.yesPercentage,
+                        l10n.accepted.toUpperCase(),
+                        tally.accepted,
+                        tally.acceptPercentage,
                       ),
                       _buildVoteCountCard(
-                        l10n.no.toUpperCase(),
-                        voting.results.no,
-                        voting.results.noPercentage,
+                        l10n.denied.toUpperCase(),
+                        tally.denied,
+                        tally.denyPercentage,
                       ),
                       _buildVoteCountCard(
                         l10n.abstain.toUpperCase(),
-                        voting.results.abstain,
-                        voting.results.abstainPercentage,
+                        tally.abstained,
+                        tally.abstainPercentage,
                       ),
                     ],
                   ),
@@ -425,13 +480,13 @@ class VotingControlScreen extends ConsumerWidget {
                     child: BarChart(
                       BarChartData(
                         alignment: BarChartAlignment.spaceEvenly,
-                        maxY: voting.results.total.toDouble() * 1.2,
+                        maxY: maxY,
                         barGroups: [
                           BarChartGroupData(
                             x: 0,
                             barRods: [
                               BarChartRodData(
-                                toY: voting.results.yes.toDouble(),
+                                toY: tally.accepted.toDouble(),
                                 gradient: const LinearGradient(
                                   begin: Alignment.bottomCenter,
                                   end: Alignment.topCenter,
@@ -448,7 +503,7 @@ class VotingControlScreen extends ConsumerWidget {
                             x: 1,
                             barRods: [
                               BarChartRodData(
-                                toY: voting.results.no.toDouble(),
+                                toY: tally.denied.toDouble(),
                                 color: Colors.white.withOpacity(0.7),
                                 width: 50,
                                 borderRadius: const BorderRadius.vertical(
@@ -461,7 +516,7 @@ class VotingControlScreen extends ConsumerWidget {
                             x: 2,
                             barRods: [
                               BarChartRodData(
-                                toY: voting.results.abstain.toDouble(),
+                                toY: tally.abstained.toDouble(),
                                 color: Colors.white.withOpacity(0.4),
                                 width: 50,
                                 borderRadius: const BorderRadius.vertical(
@@ -477,8 +532,8 @@ class VotingControlScreen extends ConsumerWidget {
                               showTitles: true,
                               getTitlesWidget: (value, meta) {
                                 final labels = [
-                                  l10n.yes.toUpperCase(),
-                                  l10n.no.toUpperCase(),
+                                  l10n.accepted.toUpperCase(),
+                                  l10n.denied.toUpperCase(),
                                   l10n.abstain.toUpperCase(),
                                 ];
                                 final index = value.toInt();

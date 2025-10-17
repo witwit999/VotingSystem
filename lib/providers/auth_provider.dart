@@ -4,8 +4,11 @@ import '../services/auth_service.dart';
 import '../services/api_service.dart';
 import '../core/utils/app_logger.dart';
 
-// API Service Provider
-final apiServiceProvider = Provider((ref) => ApiService());
+// API Service Provider - Singleton to ensure single instance across app
+final apiServiceProvider = Provider((ref) {
+  AppLogger.debug('ApiServiceProvider: Creating ApiService instance');
+  return ApiService();
+});
 
 // Auth Service Provider
 final authServiceProvider = Provider((ref) {

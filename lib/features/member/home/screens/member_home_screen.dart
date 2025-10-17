@@ -10,6 +10,7 @@ import '../../../../providers/auth_provider.dart';
 import '../../../../providers/session_provider.dart';
 import '../../../../providers/voting_provider.dart';
 import '../../../../core/localization/app_localizations.dart';
+import '../../../../core/utils/app_logger.dart';
 
 class MemberHomeScreen extends ConsumerStatefulWidget {
   const MemberHomeScreen({super.key});
@@ -19,12 +20,92 @@ class MemberHomeScreen extends ConsumerStatefulWidget {
 }
 
 class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen> {
+  final Set<String> _joinedSessions = {};
+  bool _isJoining = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Load sessions and voting data when screen loads
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      AppLogger.info('MemberHomeScreen: Loading sessions on screen init');
+      ref.read(sessionProvider.notifier).loadSessions();
+      ref.read(currentVotingProvider.notifier).loadCurrentVoting();
+    });
+  }
+
   String _getGreeting(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final hour = DateTime.now().hour;
     if (hour < 12) return l10n.goodMorning;
     if (hour < 17) return l10n.goodAfternoon;
     return l10n.goodEvening;
+  }
+
+  Future<void> _handleJoinSession(String sessionId) async {
+    if (_isJoining) return;
+
+    setState(() => _isJoining = true);
+
+    try {
+      await ref.read(sessionProvider.notifier).joinSession(sessionId);
+      if (mounted) {
+        setState(() => _joinedSessions.add(sessionId));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Successfully joined session'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+    } catch (e) {
+      AppLogger.error('MemberHomeScreen: Failed to join session', e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to join session: ${e.toString()}'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isJoining = false);
+      }
+    }
+  }
+
+  Future<void> _handleLeaveSession(String sessionId) async {
+    if (_isJoining) return;
+
+    setState(() => _isJoining = true);
+
+    try {
+      await ref.read(sessionProvider.notifier).leaveSession(sessionId);
+      if (mounted) {
+        setState(() => _joinedSessions.remove(sessionId));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Left session'),
+            backgroundColor: AppColors.info,
+          ),
+        );
+      }
+    } catch (e) {
+      AppLogger.error('MemberHomeScreen: Failed to leave session', e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to leave session: ${e.toString()}'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isJoining = false);
+      }
+    }
   }
 
   @override
@@ -105,9 +186,11 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen> {
                       // Check if there's an active session
                       sessionState.when(
                         data: (sessions) {
-                          // Filter active sessions
+                          // Filter and sort active sessions (newest first)
                           final activeSessions =
-                              sessions.where((s) => s.isActive).toList();
+                              sessions.where((s) => s.isActive).toList()..sort(
+                                (a, b) => b.createdAt.compareTo(a.createdAt),
+                              );
 
                           if (activeSessions.isEmpty) {
                             // No active sessions
@@ -358,12 +441,17 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen> {
                     ],
                   ),
 
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 20),
+
+                  // Join/Leave Session Button
+                  _buildJoinLeaveButton(session, l10n),
+
+                  const SizedBox(height: 20),
 
                   // Voting Decision Section
                   votingState.when(
                     data: (voting) {
-                      if (voting == null || !voting.isActive) {
+                      if (voting == null || !voting.isOpen) {
                         // No active voting
                         return Container(
                           padding: const EdgeInsets.all(20),
@@ -395,9 +483,8 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen> {
 
                       // Active voting decision
                       final isExpired =
-                          voting.endTime != null &&
-                          DateTime.now().isAfter(voting.endTime!);
-                      final hasVoted = voting.userVote != null;
+                          voting.closeAt != null &&
+                          DateTime.now().isAfter(voting.closeAt!);
 
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -443,15 +530,18 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen> {
                                     color: Colors.white,
                                   ),
                                 ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  voting.question,
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.white.withOpacity(0.85),
-                                    height: 1.4,
+                                if (voting.description != null &&
+                                    voting.description!.isNotEmpty) ...[
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    voting.description!,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: Colors.white.withOpacity(0.85),
+                                      height: 1.4,
+                                    ),
                                   ),
-                                ),
+                                ],
                                 const SizedBox(height: 20),
 
                                 // Timer or Status
@@ -485,39 +575,9 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen> {
                                       ],
                                     ),
                                   )
-                                else if (hasVoted)
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 14,
-                                      vertical: 10,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const Icon(
-                                          Icons.check_circle,
-                                          size: 18,
-                                          color: AppColors.success,
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          l10n.voteSubmitted,
-                                          style: const TextStyle(
-                                            color: AppColors.success,
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 13,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  )
-                                else if (voting.endTime != null)
+                                else if (voting.closeAt != null)
                                   _VotingTimerWhite(
-                                    endTime: voting.endTime!,
+                                    endTime: voting.closeAt!,
                                     l10n: l10n,
                                   ),
 
@@ -566,23 +626,17 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen> {
                                               Icon(
                                                 isExpired
                                                     ? Icons.block
-                                                    : hasVoted
-                                                    ? Icons.poll
                                                     : Icons.how_to_vote,
                                                 color:
                                                     isExpired
                                                         ? Colors.white
                                                             .withOpacity(0.6)
-                                                        : hasVoted
-                                                        ? AppColors.success
                                                         : AppColors.primary,
                                               ),
                                               const SizedBox(width: 8),
                                               Text(
                                                 isExpired
                                                     ? l10n.votingEnded
-                                                    : hasVoted
-                                                    ? l10n.votingResults
                                                     : l10n.voteNow,
                                                 style: TextStyle(
                                                   fontSize: 16,
@@ -591,8 +645,6 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen> {
                                                       isExpired
                                                           ? Colors.white
                                                               .withOpacity(0.6)
-                                                          : hasVoted
-                                                          ? AppColors.success
                                                           : AppColors.primary,
                                                 ),
                                               ),
@@ -652,6 +704,63 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen> {
                         ),
                   ),
                 ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildJoinLeaveButton(dynamic session, AppLocalizations l10n) {
+    final isJoined = _joinedSessions.contains(session.id);
+
+    return GestureDetector(
+      onTap:
+          _isJoining
+              ? null
+              : () {
+                if (isJoined) {
+                  _handleLeaveSession(session.id);
+                } else {
+                  _handleJoinSession(session.id);
+                }
+              },
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          color:
+              isJoined
+                  ? Colors.white.withOpacity(0.25)
+                  : Colors.white.withOpacity(0.9),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white.withOpacity(0.5), width: 2),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (_isJoining)
+              const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              )
+            else
+              Icon(
+                isJoined ? Icons.exit_to_app : Icons.login,
+                color: isJoined ? Colors.white : AppColors.primary,
+                size: 20,
+              ),
+            const SizedBox(width: 12),
+            Text(
+              isJoined ? l10n.leaveSession : l10n.joinSession,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: isJoined ? Colors.white : AppColors.primary,
               ),
             ),
           ],

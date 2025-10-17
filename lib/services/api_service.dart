@@ -79,9 +79,20 @@ class ApiService {
   }
 
   Future<String?> _getToken() async {
-    if (_accessToken != null) return _accessToken;
+    if (_accessToken != null) {
+      AppLogger.debug('ApiService: Using cached access token');
+      return _accessToken;
+    }
     final prefs = await SharedPreferences.getInstance();
     _accessToken = prefs.getString(_accessTokenKey);
+    if (_accessToken != null) {
+      AppLogger.debug('ApiService: Loaded access token from storage');
+      AppLogger.debug(
+        'ApiService: Token preview: ${_accessToken!.substring(0, 20)}...',
+      );
+    } else {
+      AppLogger.warning('ApiService: No access token found!');
+    }
     return _accessToken;
   }
 

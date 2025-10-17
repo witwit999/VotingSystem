@@ -6,32 +6,108 @@ import '../../../../core/widgets/bottom_nav_bar.dart';
 import '../../../../core/widgets/custom_app_bar.dart';
 import '../../../../core/widgets/loading_indicator.dart';
 import '../../../../core/widgets/error_widget.dart';
-import '../../../../providers/voting_provider.dart';
+import '../../../../providers/session_provider.dart';
+import '../../../../providers/decision_provider.dart';
+import '../../../../models/decision_model.dart';
 import '../../../../core/localization/app_localizations.dart';
+import '../../../../core/utils/app_logger.dart';
 
-class VotingScreen extends ConsumerWidget {
+class VotingScreen extends ConsumerStatefulWidget {
   const VotingScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final votingState = ref.watch(currentVotingProvider);
+  ConsumerState<VotingScreen> createState() => _VotingScreenState();
+}
+
+class _VotingScreenState extends ConsumerState<VotingScreen> {
+  String? _joinedSessionId;
+  final Set<String> _votedDecisions =
+      {}; // Track which decisions user has voted on
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadActiveSession();
+    });
+  }
+
+  Future<void> _loadActiveSession() async {
+    AppLogger.info('VotingScreen: Loading active session for member');
+
+    // Get live sessions
+    await ref.read(sessionProvider.notifier).loadLiveSessions();
+
+    final sessions = ref.read(liveSessionsProvider);
+
+    if (sessions.isNotEmpty) {
+      // For now, get the first live session
+      // In a real app, we'd track which session the member joined
+      final firstSession = sessions.first;
+      if (mounted) {
+        setState(() {
+          _joinedSessionId = firstSession.id;
+        });
+
+        AppLogger.info(
+          'VotingScreen: Loading decisions for session: ${firstSession.id}',
+        );
+        // Load decisions for this session
+        await ref
+            .read(sessionDecisionsProvider(firstSession.id).notifier)
+            .loadDecisions();
+      }
+    } else {
+      AppLogger.warning('VotingScreen: No live sessions available');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+
+    if (_joinedSessionId == null) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: CustomAppBar(title: l10n.voting),
+        body: Center(child: FadeInUp(child: _buildEmptyState(context, l10n))),
+        bottomNavigationBar: const BottomNavBar(currentIndex: 2),
+      );
+    }
+
+    final decisionsState = ref.watch(
+      sessionDecisionsProvider(_joinedSessionId!),
+    );
 
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: CustomAppBar(title: l10n.voting),
-      body: votingState.when(
-        data: (voting) {
-          if (voting == null || !voting.isActive) {
+      body: decisionsState.when(
+        data: (decisions) {
+          // Find the first OPEN decision
+          final openDecisions =
+              decisions.where((d) => d.status == DecisionStatus.open).toList();
+
+          if (openDecisions.isEmpty) {
             return Center(
               child: FadeInUp(child: _buildEmptyState(context, l10n)),
             );
           }
 
-          final hasVoted = voting.userVote != null;
+          final activeDecision = openDecisions.first;
+
+          // Check if user has voted and recast is not allowed
+          final hasVoted = _votedDecisions.contains(activeDecision.id);
+          final canVote = !hasVoted || activeDecision.allowRecast;
 
           return RefreshIndicator(
-            onRefresh: () => ref.read(currentVotingProvider.notifier).refresh(),
+            onRefresh:
+                () =>
+                    ref
+                        .read(
+                          sessionDecisionsProvider(_joinedSessionId!).notifier,
+                        )
+                        .loadDecisions(),
             child: SingleChildScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(24),
@@ -41,187 +117,92 @@ class VotingScreen extends ConsumerWidget {
                   // Question Card with Title
                   FadeInUp(
                     delay: const Duration(milliseconds: 100),
-                    child: Container(
-                      padding: const EdgeInsets.all(32),
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [AppColors.primary, Color(0xFF1565C0)],
-                        ),
-                        borderRadius: BorderRadius.circular(24),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.primary.withOpacity(0.4),
-                            blurRadius: 25,
-                            offset: const Offset(0, 12),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(10),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.2),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: const Icon(
-                                  Icons.poll,
-                                  color: Colors.white,
-                                  size: 24,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Flexible(
-                                child: Text(
-                                  voting.title,
-                                  style: const TextStyle(
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 20),
-                          Container(
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.15),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: Text(
-                              voting.question,
-                              style: TextStyle(
-                                fontSize: 17,
-                                height: 1.6,
-                                color: Colors.white.withOpacity(0.95),
-                                fontWeight: FontWeight.w500,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                    child: _buildDecisionCard(activeDecision),
                   ),
                   const SizedBox(height: 32),
 
                   // Voting Buttons
-                  if (!hasVoted) ...[
-                    FadeInLeft(
-                      delay: const Duration(milliseconds: 200),
-                      child: _buildVoteButton(
-                        context,
-                        ref,
-                        label: l10n.yes.toUpperCase(),
-                        value: 'yes',
-                        gradient: const LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [AppColors.voteYes, Color(0xFF2E7D32)],
-                        ),
-                        icon: Icons.thumb_up,
+                  FadeInLeft(
+                    delay: const Duration(milliseconds: 200),
+                    child: _buildVoteButton(
+                      context,
+                      ref,
+                      label: l10n.accepted.toUpperCase(),
+                      choice: VoteChoice.accept,
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [AppColors.voteYes, Color(0xFF2E7D32)],
                       ),
+                      icon: Icons.thumb_up,
+                      decisionId: activeDecision.id,
+                      isEnabled: canVote,
                     ),
-                    const SizedBox(height: 20),
-                    FadeInRight(
-                      delay: const Duration(milliseconds: 300),
-                      child: _buildVoteButton(
-                        context,
-                        ref,
-                        label: l10n.no.toUpperCase(),
-                        value: 'no',
-                        gradient: const LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [AppColors.voteNo, Color(0xFFC62828)],
-                        ),
-                        icon: Icons.thumb_down,
+                  ),
+                  const SizedBox(height: 20),
+                  FadeInRight(
+                    delay: const Duration(milliseconds: 300),
+                    child: _buildVoteButton(
+                      context,
+                      ref,
+                      label: l10n.denied.toUpperCase(),
+                      choice: VoteChoice.deny,
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [AppColors.voteNo, Color(0xFFC62828)],
                       ),
+                      icon: Icons.thumb_down,
+                      decisionId: activeDecision.id,
+                      isEnabled: canVote,
                     ),
-                    const SizedBox(height: 20),
+                  ),
+                  const SizedBox(height: 20),
+                  FadeInUp(
+                    delay: const Duration(milliseconds: 400),
+                    child: _buildVoteButton(
+                      context,
+                      ref,
+                      label: l10n.abstain.toUpperCase(),
+                      choice: VoteChoice.abstain,
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [AppColors.voteAbstain, Color(0xFF757575)],
+                      ),
+                      icon: Icons.remove_circle_outline,
+                      decisionId: activeDecision.id,
+                      isEnabled: canVote,
+                    ),
+                  ),
+
+                  // Show "Already Voted" message if voted and can't recast
+                  if (hasVoted && !activeDecision.allowRecast) ...[
+                    const SizedBox(height: 24),
                     FadeInUp(
-                      delay: const Duration(milliseconds: 400),
-                      child: _buildVoteButton(
-                        context,
-                        ref,
-                        label: l10n.abstain.toUpperCase(),
-                        value: 'abstain',
-                        gradient: const LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [AppColors.voteAbstain, Color(0xFF757575)],
-                        ),
-                        icon: Icons.remove_circle_outline,
-                      ),
-                    ),
-                  ] else ...[
-                    // Vote Submitted
-                    FadeInUp(
-                      delay: const Duration(milliseconds: 200),
+                      delay: const Duration(milliseconds: 500),
                       child: Container(
-                        padding: const EdgeInsets.all(32),
+                        padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [AppColors.success, Color(0xFF2E7D32)],
-                          ),
-                          borderRadius: BorderRadius.circular(24),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppColors.success.withOpacity(0.4),
-                              blurRadius: 25,
-                              offset: const Offset(0, 12),
-                            ),
-                          ],
+                          color: AppColors.success.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: AppColors.success),
                         ),
-                        child: Column(
+                        child: Row(
                           children: [
-                            Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.2),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.check_circle,
-                                size: 64,
-                                color: Colors.white,
-                              ),
+                            const Icon(
+                              Icons.check_circle,
+                              color: AppColors.success,
+                              size: 24,
                             ),
-                            const SizedBox(height: 20),
-                            Text(
-                              l10n.voteSubmitted,
-                              style: const TextStyle(
-                                fontSize: 26,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 20,
-                                vertical: 10,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
+                            const SizedBox(width: 12),
+                            Expanded(
                               child: Text(
-                                '${l10n.yourVote}: ${voting.userVote!.toUpperCase()}',
+                                l10n.voteSubmittedSuccessfully,
                                 style: const TextStyle(
                                   fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.success,
                                 ),
                               ),
                             ),
@@ -234,26 +215,103 @@ class VotingScreen extends ConsumerWidget {
                   const SizedBox(height: 32),
 
                   // Live Results
-                  FadeInUp(
-                    delay: Duration(milliseconds: hasVoted ? 300 : 500),
-                    child: _buildLiveResults(voting, l10n),
-                  ),
+                  if (activeDecision.tally != null)
+                    FadeInUp(
+                      delay: const Duration(milliseconds: 500),
+                      child: _buildLiveResults(activeDecision, l10n),
+                    ),
                 ],
               ),
             ),
           );
         },
-        loading:
-            () => LoadingIndicator(
-              message: AppLocalizations.of(context).loadingVotingSession,
-            ),
+        loading: () => LoadingIndicator(message: l10n.loadingVotingSession),
         error:
             (error, _) => CustomErrorWidget(
               message: error.toString(),
-              onRetry: () => ref.read(currentVotingProvider.notifier).refresh(),
+              onRetry:
+                  () =>
+                      ref
+                          .read(
+                            sessionDecisionsProvider(
+                              _joinedSessionId!,
+                            ).notifier,
+                          )
+                          .loadDecisions(),
             ),
       ),
       bottomNavigationBar: const BottomNavBar(currentIndex: 2),
+    );
+  }
+
+  Widget _buildDecisionCard(DecisionModel decision) {
+    return Container(
+      padding: const EdgeInsets.all(32),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppColors.primary, Color(0xFF1565C0)],
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withOpacity(0.4),
+            blurRadius: 25,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.poll, color: Colors.white, size: 24),
+              ),
+              const SizedBox(width: 12),
+              Flexible(
+                child: Text(
+                  decision.title,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ],
+          ),
+          if (decision.description != null &&
+              decision.description!.isNotEmpty) ...[
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Text(
+                decision.description!,
+                style: TextStyle(
+                  fontSize: 17,
+                  height: 1.6,
+                  color: Colors.white.withOpacity(0.95),
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -261,24 +319,49 @@ class VotingScreen extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref, {
     required String label,
-    required String value,
+    required VoteChoice choice,
     required LinearGradient gradient,
     required IconData icon,
+    required String decisionId,
+    bool isEnabled = true,
   }) {
     return GestureDetector(
-      onTap: () => _showConfirmDialog(context, ref, label, value, gradient),
+      onTap:
+          isEnabled
+              ? () => _showConfirmDialog(
+                context,
+                ref,
+                label,
+                choice,
+                gradient,
+                decisionId,
+              )
+              : null,
       child: Container(
         height: 90,
         decoration: BoxDecoration(
-          gradient: gradient,
+          gradient:
+              isEnabled
+                  ? gradient
+                  : LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      AppColors.textSecondary.withOpacity(0.3),
+                      AppColors.textSecondary.withOpacity(0.2),
+                    ],
+                  ),
           borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: gradient.colors.first.withOpacity(0.4),
-              blurRadius: 20,
-              offset: const Offset(0, 10),
-            ),
-          ],
+          boxShadow:
+              isEnabled
+                  ? [
+                    BoxShadow(
+                      color: gradient.colors.first.withOpacity(0.4),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
+                    ),
+                  ]
+                  : [],
         ),
         child: Stack(
           children: [
@@ -326,8 +409,9 @@ class VotingScreen extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
     String label,
-    String value,
+    VoteChoice choice,
     LinearGradient gradient,
+    String decisionId,
   ) {
     final l10n = AppLocalizations.of(context);
     showDialog(
@@ -404,16 +488,14 @@ class VotingScreen extends ConsumerWidget {
                         const SizedBox(width: 12),
                         Expanded(
                           child: ElevatedButton(
-                            onPressed: () {
+                            onPressed: () async {
                               Navigator.pop(context);
-                              ref
-                                  .read(currentVotingProvider.notifier)
-                                  .submitVote(value);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(l10n.voteSubmittedSuccessfully),
-                                  backgroundColor: gradient.colors.first,
-                                ),
+                              await _submitVote(
+                                ref,
+                                decisionId,
+                                choice,
+                                gradient,
+                                l10n,
                               );
                             },
                             style: ElevatedButton.styleFrom(
@@ -444,7 +526,52 @@ class VotingScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildLiveResults(dynamic voting, AppLocalizations l10n) {
+  Future<void> _submitVote(
+    WidgetRef ref,
+    String decisionId,
+    VoteChoice choice,
+    LinearGradient gradient,
+    AppLocalizations l10n,
+  ) async {
+    try {
+      AppLogger.info(
+        'Member: Submitting vote for decision: $decisionId, choice: ${choice.name}',
+      );
+
+      await ref
+          .read(sessionDecisionsProvider(_joinedSessionId!).notifier)
+          .submitVote(decisionId, choice);
+
+      // Mark this decision as voted
+      if (mounted) {
+        setState(() {
+          _votedDecisions.add(decisionId);
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(l10n.voteSubmittedSuccessfully),
+            backgroundColor: gradient.colors.first,
+          ),
+        );
+      }
+    } catch (e) {
+      AppLogger.error('Member: Failed to submit vote: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to submit vote: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+
+  Widget _buildLiveResults(DecisionModel decision, AppLocalizations l10n) {
+    final tally = decision.tally!;
+    final total = tally.accepted + tally.denied + tally.abstained;
+
     return Container(
       padding: const EdgeInsets.all(32),
       decoration: BoxDecoration(
@@ -502,7 +629,7 @@ class VotingScreen extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  '${voting.results.total} ${l10n.votes}',
+                  '$total ${l10n.votes}',
                   style: const TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.bold,
@@ -514,21 +641,21 @@ class VotingScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 24),
           _buildResultBar(
-            l10n.yes.toUpperCase(),
-            voting.results.yes,
-            voting.results.yesPercentage,
+            l10n.accepted.toUpperCase(),
+            tally.accepted,
+            tally.acceptPercentage,
           ),
           const SizedBox(height: 16),
           _buildResultBar(
-            l10n.no.toUpperCase(),
-            voting.results.no,
-            voting.results.noPercentage,
+            l10n.denied.toUpperCase(),
+            tally.denied,
+            tally.denyPercentage,
           ),
           const SizedBox(height: 16),
           _buildResultBar(
             l10n.abstain.toUpperCase(),
-            voting.results.abstain,
-            voting.results.abstainPercentage,
+            tally.abstained,
+            tally.abstainPercentage,
           ),
         ],
       ),

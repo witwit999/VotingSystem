@@ -180,6 +180,26 @@ class AppLocalizations {
   String get sessionTitle => translate('session_title');
   String get sessionDescription => translate('session_description');
   String get sessionSpeaker => translate('session_speaker');
+  String get sessionCreated => translate('session_created');
+  String get openSession => translate('open_session');
+  String get pauseSession => translate('pause_session');
+  String get closeSession => translate('close_session');
+  String get archiveSession => translate('archive_session');
+  String get sessionDetails => translate('session_details');
+
+  // Decisions
+  String get decisions => translate('decisions');
+  String get decision => translate('decision');
+  String get newDecision => translate('new_decision');
+  String get createDecision => translate('create_decision');
+  String get openDecision => translate('open_decision');
+  String get closeDecision => translate('close_decision');
+  String get decisionTitle => translate('decision_title');
+  String get noDecisions => translate('no_decisions');
+  String get allowRecast => translate('allow_recast');
+  String get accepted => translate('accepted');
+  String get denied => translate('denied');
+  String get create => translate('create');
 
   // Members Management
   String get membersManagement => translate('members_management');
@@ -228,6 +248,8 @@ class AppLocalizations {
   String get noSessionsCurrently => translate('no_sessions_currently');
   String get timeRemaining => translate('time_remaining');
   String get enrollInSession => translate('enroll_in_session');
+  String get joinSession => translate('join_session');
+  String get leaveSession => translate('leave_session');
   String get joinVoting => translate('join_voting');
   String get votingEndsIn => translate('voting_ends_in');
   String get activeDecision => translate('active_decision');
@@ -553,6 +575,26 @@ const Map<String, String> _enStrings = {
   'session_title': 'Session Title',
   'session_description': 'Description',
   'session_speaker': 'Speaker',
+  'session_created': 'Session Created Successfully',
+  'open_session': 'Open Session',
+  'pause_session': 'Pause Session',
+  'close_session': 'Close Session',
+  'archive_session': 'Archive Session',
+  'session_details': 'Session Details',
+
+  // Decisions
+  'decisions': 'Decisions',
+  'decision': 'Decision',
+  'new_decision': 'New Decision',
+  'create_decision': 'Create Decision',
+  'open_decision': 'Open Decision',
+  'close_decision': 'Close Decision',
+  'decision_title': 'Decision Title',
+  'no_decisions': 'No Decisions Yet',
+  'allow_recast': 'Allow Recast',
+  'accepted': 'Accepted',
+  'denied': 'Denied',
+  'create': 'Create',
 
   // Members Management
   'members_management': 'Members Management',
@@ -602,6 +644,8 @@ const Map<String, String> _enStrings = {
       'There are no active sessions currently. Please check back later.',
   'time_remaining': 'Time Remaining',
   'enroll_in_session': 'Enroll in Session',
+  'join_session': 'Join Session',
+  'leave_session': 'Leave Session',
   'join_voting': 'Join Voting',
   'voting_ends_in': 'Voting ends in',
   'active_decision': 'Active Decision',
@@ -907,6 +951,26 @@ const Map<String, String> _arStrings = {
   'session_title': 'عنوان الجلسة',
   'session_description': 'الوصف',
   'session_speaker': 'المتحدث',
+  'session_created': 'تم إنشاء الجلسة بنجاح',
+  'open_session': 'فتح الجلسة',
+  'pause_session': 'إيقاف الجلسة مؤقتاً',
+  'close_session': 'إغلاق الجلسة',
+  'archive_session': 'أرشفة الجلسة',
+  'session_details': 'تفاصيل الجلسة',
+
+  // Decisions
+  'decisions': 'القرارات',
+  'decision': 'قرار',
+  'new_decision': 'قرار جديد',
+  'create_decision': 'إنشاء قرار',
+  'open_decision': 'فتح القرار',
+  'close_decision': 'إغلاق القرار',
+  'decision_title': 'عنوان القرار',
+  'no_decisions': 'لا توجد قرارات بعد',
+  'allow_recast': 'السماح بتغيير الصوت',
+  'accepted': 'موافق',
+  'denied': 'رافض',
+  'create': 'إنشاء',
 
   // Members Management
   'members_management': 'إدارة الأعضاء',
@@ -955,6 +1019,8 @@ const Map<String, String> _arStrings = {
   'no_sessions_currently': 'لا توجد جلسات نشطة حالياً. يرجى المحاولة لاحقاً.',
   'time_remaining': 'الوقت المتبقي',
   'enroll_in_session': 'الانضمام للجلسة',
+  'join_session': 'الانضمام للجلسة',
+  'leave_session': 'مغادرة الجلسة',
   'join_voting': 'انضم للتصويت',
   'voting_ends_in': 'ينتهي التصويت في',
   'active_decision': 'القرار النشط',

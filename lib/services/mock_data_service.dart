@@ -75,38 +75,10 @@ class MockDataService {
     ];
   }
 
-  // Mock Sessions
+  // Mock Sessions - No longer used (using real API)
+  // Use SessionService.getSessions() instead
   static List<SessionModel> getSessions() {
-    final now = DateTime.now();
-    return [
-      SessionModel(
-        id: '1',
-        title: 'Morning Session',
-        speaker: 'Dr. Michael Brown',
-        startTime: now.subtract(const Duration(hours: 2)),
-        endTime: now.add(const Duration(hours: 2)),
-        description: 'Opening and main discussions',
-        isActive: true,
-      ),
-      SessionModel(
-        id: '2',
-        title: 'Afternoon Session',
-        speaker: 'Finance Minister',
-        startTime: now.add(const Duration(hours: 3)),
-        endTime: now.add(const Duration(hours: 6)),
-        description: 'Budget and financial matters',
-        isActive: false,
-      ),
-      SessionModel(
-        id: '3',
-        title: 'Evening Session',
-        speaker: 'Health Minister',
-        startTime: now.add(const Duration(hours: 7)),
-        endTime: now.add(const Duration(hours: 9)),
-        description: 'Healthcare and social policies',
-        isActive: false,
-      ),
-    ];
+    return [];
   }
 
   // Mock Voting

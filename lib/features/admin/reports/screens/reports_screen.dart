@@ -6,6 +6,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/widgets/admin_sidebar.dart';
 import '../../../../providers/voting_provider.dart';
 import '../../../../providers/attendance_provider.dart';
+import '../../../../models/decision_model.dart';
 import '../../../../core/localization/app_localizations.dart';
 
 class ReportsScreen extends ConsumerWidget {
@@ -78,86 +79,24 @@ class ReportsScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 24),
 
-            votingHistory.when(
-              data: (history) {
-                if (history.isEmpty) {
-                  return FadeInUp(
-                    delay: const Duration(milliseconds: 400),
-                    child: _buildEmptyState(l10n),
-                  );
-                }
-
-                return Column(
-                  children: List.generate(history.length, (index) {
+            // Voting history is now a simple list provider
+            votingHistory.isEmpty
+                ? FadeInUp(
+                  delay: const Duration(milliseconds: 400),
+                  child: _buildEmptyState(l10n),
+                )
+                : Column(
+                  children: List.generate(votingHistory.length, (index) {
                     return FadeInUp(
                       delay: Duration(milliseconds: 400 + (index * 100)),
-                      child: _buildVotingCard(history[index], index, l10n),
+                      child: _buildVotingCard(
+                        votingHistory[index],
+                        index,
+                        l10n,
+                      ),
                     );
                   }),
-                );
-              },
-              loading:
-                  () => FadeInUp(
-                    delay: const Duration(milliseconds: 400),
-                    child: Container(
-                      padding: const EdgeInsets.all(60),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            AppColors.primary.withOpacity(0.1),
-                            AppColors.info.withOpacity(0.1),
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      child: const Center(child: CircularProgressIndicator()),
-                    ),
-                  ),
-              error:
-                  (error, _) => FadeInUp(
-                    delay: const Duration(milliseconds: 400),
-                    child: Container(
-                      padding: const EdgeInsets.all(40),
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [AppColors.error, Color(0xFFC62828)],
-                        ),
-                        borderRadius: BorderRadius.circular(24),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.error.withOpacity(0.3),
-                            blurRadius: 20,
-                            offset: const Offset(0, 10),
-                          ),
-                        ],
-                      ),
-                      child: Center(
-                        child: Column(
-                          children: [
-                            const Icon(
-                              Icons.error_outline,
-                              color: Colors.white,
-                              size: 48,
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              '${l10n.error}: $error',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-            ),
+                ),
           ],
         ),
       ),
@@ -341,7 +280,11 @@ class ReportsScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildVotingCard(dynamic voting, int index, AppLocalizations l10n) {
+  Widget _buildVotingCard(
+    DecisionModel decision,
+    int index,
+    AppLocalizations l10n,
+  ) {
     // Gradient colors based on index
     final gradients = [
       [AppColors.primary, const Color(0xFF1565C0)],
@@ -352,6 +295,15 @@ class ReportsScreen extends ConsumerWidget {
 
     final gradientIndex = index % gradients.length;
     final colors = gradients[gradientIndex];
+
+    // Get tally or use zeros if no tally
+    final accepted = decision.tally?.accepted ?? 0;
+    final denied = decision.tally?.denied ?? 0;
+    final abstained = decision.tally?.abstained ?? 0;
+    final total = accepted + denied + abstained;
+    final acceptPercentage = decision.tally?.acceptPercentage ?? 0;
+    final denyPercentage = decision.tally?.denyPercentage ?? 0;
+    final abstainPercentage = decision.tally?.abstainPercentage ?? 0;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
@@ -406,7 +358,7 @@ class ReportsScreen extends ConsumerWidget {
                       const SizedBox(width: 16),
                       Expanded(
                         child: Text(
-                          voting.title,
+                          decision.title,
                           style: const TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.bold,
@@ -424,18 +376,18 @@ class ReportsScreen extends ConsumerWidget {
                     children: [
                       Expanded(
                         child: _buildVoteColumn(
-                          l10n.yes.toUpperCase(),
-                          voting.results.yes,
-                          voting.results.yesPercentage,
+                          l10n.accepted.toUpperCase(),
+                          accepted,
+                          acceptPercentage,
                           Colors.white,
                         ),
                       ),
                       const SizedBox(width: 16),
                       Expanded(
                         child: _buildVoteColumn(
-                          l10n.no.toUpperCase(),
-                          voting.results.no,
-                          voting.results.noPercentage,
+                          l10n.denied.toUpperCase(),
+                          denied,
+                          denyPercentage,
                           Colors.white.withOpacity(0.7),
                         ),
                       ),
@@ -443,8 +395,8 @@ class ReportsScreen extends ConsumerWidget {
                       Expanded(
                         child: _buildVoteColumn(
                           l10n.abstain.toUpperCase(),
-                          voting.results.abstain,
-                          voting.results.abstainPercentage,
+                          abstained,
+                          abstainPercentage,
                           Colors.white.withOpacity(0.5),
                         ),
                       ),
@@ -454,35 +406,36 @@ class ReportsScreen extends ConsumerWidget {
                   const SizedBox(height: 24),
 
                   // Chart visualization
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: SizedBox(
-                      height: 12,
-                      child: Row(
-                        children: [
-                          if (voting.results.yes > 0)
-                            Expanded(
-                              flex: voting.results.yes,
-                              child: Container(color: Colors.white),
-                            ),
-                          if (voting.results.no > 0)
-                            Expanded(
-                              flex: voting.results.no,
-                              child: Container(
-                                color: Colors.white.withOpacity(0.6),
+                  if (total > 0)
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: SizedBox(
+                        height: 12,
+                        child: Row(
+                          children: [
+                            if (accepted > 0)
+                              Expanded(
+                                flex: accepted,
+                                child: Container(color: Colors.white),
                               ),
-                            ),
-                          if (voting.results.abstain > 0)
-                            Expanded(
-                              flex: voting.results.abstain,
-                              child: Container(
-                                color: Colors.white.withOpacity(0.3),
+                            if (denied > 0)
+                              Expanded(
+                                flex: denied,
+                                child: Container(
+                                  color: Colors.white.withOpacity(0.6),
+                                ),
                               ),
-                            ),
-                        ],
+                            if (abstained > 0)
+                              Expanded(
+                                flex: abstained,
+                                child: Container(
+                                  color: Colors.white.withOpacity(0.3),
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
 
                   const SizedBox(height: 16),
 
@@ -496,7 +449,7 @@ class ReportsScreen extends ConsumerWidget {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
-                      '${l10n.totalVotes}: ${voting.results.total}',
+                      '${l10n.totalVotes}: $total',
                       style: const TextStyle(
                         fontSize: 13,
                         color: Colors.white,

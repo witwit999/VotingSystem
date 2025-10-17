@@ -22,6 +22,35 @@ class ApiConstants {
   static const String refreshEndpoint = '/auth/refresh';
   static const String meEndpoint = '/auth/me';
 
+  // Session endpoints
+  static const String sessionsEndpoint = '/sessions';
+  static String sessionDetailsEndpoint(String sessionId) =>
+      '/sessions/$sessionId';
+  static String sessionJoinEndpoint(String sessionId) =>
+      '/sessions/$sessionId/join';
+  static String sessionLeaveEndpoint(String sessionId) =>
+      '/sessions/$sessionId/leave';
+  static String sessionOpenEndpoint(String sessionId) =>
+      '/sessions/$sessionId/open';
+  static String sessionPauseEndpoint(String sessionId) =>
+      '/sessions/$sessionId/pause';
+  static String sessionCloseEndpoint(String sessionId) =>
+      '/sessions/$sessionId/close';
+  static String sessionArchiveEndpoint(String sessionId) =>
+      '/sessions/$sessionId/archive';
+
+  // Decision endpoints
+  static String sessionDecisionsEndpoint(String sessionId) =>
+      '/sessions/$sessionId/decisions';
+  static String decisionDetailsEndpoint(String decisionId) =>
+      '/decisions/$decisionId';
+  static String decisionOpenEndpoint(String decisionId) =>
+      '/decisions/$decisionId/open';
+  static String decisionCloseEndpoint(String decisionId) =>
+      '/decisions/$decisionId/close';
+  static String decisionVotesEndpoint(String decisionId) =>
+      '/decisions/$decisionId/votes';
+
   // Timeouts
   static const Duration connectTimeout = Duration(seconds: 30);
   static const Duration receiveTimeout = Duration(seconds: 30);
